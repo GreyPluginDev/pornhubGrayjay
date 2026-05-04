@@ -25,7 +25,7 @@
 	"changelog": {
 		"11": [
 			"Fix playing videos, isChannelUrl check;",
-			"Fix some loading some channels;"
+			"Fix loading some channels;"
 		],
 		"10": [
 			"Remove invalid Signature;",
