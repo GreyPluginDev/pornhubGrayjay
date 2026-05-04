@@ -179,8 +179,7 @@ source.searchChannels = function (query) {
 
 
 source.isChannelUrl = function (url) {
-	return (url.includes(".pornhub.com/model/") || url.includes(".pornhub.com/channels/") || url.includes(".pornhub.com/pornstar/") ||
-			url.includes("/model/") || url.includes("/channels/") || url.includes("/pornstar/"));
+	return url.includes(".pornhub.com/model/") || url.includes(".pornhub.com/channels/") || url.includes(".pornhub.com/pornstar/");
 };
 
 source.getChannel = function (url) {
@@ -257,35 +256,19 @@ source.getContentDetails = function (url) {
 	var mediaDefinitions = flashvars["mediaDefinitions"];
 	var sources = [];
 
-
 	for (const mediaDefinition of mediaDefinitions) {
-		if(typeof mediaDefinition.defaultQuality === "boolean") {
-			if(typeof mediaDefinition.quality === "object") continue;
-			let width = supportedResolutions[`${mediaDefinition.quality}`].width;
-			let height = supportedResolutions[`${mediaDefinition.quality}`].height;
-			sources.push(new HLSSource({
-				name: `${width}x${height}`,
-				width: width,
-				height: height,
-				url: mediaDefinition.videoUrl,
-				duration: flashvars.video_duration ?? 0,
-				priority: true
-			}));
-		} else if(typeof mediaDefinition.defaultQuality === "number") {
-			// doesn't work for now
-			// sources.push(new VideoUrlSource({
-			// 	name: "mp4",
-			// 	url: mediaDefinition.videoUrl,
-			// 	width: supportedResolutions[mediaDefinition.defaultQuality].width,
-			// 	height: supportedResolutions[mediaDefinition.defaultQuality].height,
-			// 	duration: flashvars.video_duration,
-			// 	container: "video/mp4"
-			// }));
-		} else {
-			continue;
-		}
+		if (typeof mediaDefinition.defaultQuality !== "boolean") continue;
+		if (typeof mediaDefinition.quality === "object") continue;
+		var resolution = supportedResolutions[mediaDefinition.quality];
+		if (!resolution) continue;
+		sources.push(new HLSSource({
+			name: `${resolution.width}x${resolution.height}`,
+			url: mediaDefinition.videoUrl,
+			duration: flashvars.video_duration ?? 0,
+			priority: true,
+			requestModifier: { headers: { "Referer": URL_BASE + "/" } }
+		}));
 	}
-
 
 	var dom = domParser.parseFromString(html);
 
@@ -297,12 +280,20 @@ source.getContentDetails = function (url) {
 
 	var userInfoNode = dom.getElementsByClassName("userInfo")[0];
 
-	var channelUrlId = userInfoNode.querySelector("div.usernameWrap a").getAttribute("href")[2]
-	
-	var subscribersStr = userInfoNode.querySelectorAll("span")[2].text;
+	var channelUrlId = userInfoNode.querySelector("div.usernameWrap a").getAttribute("href").split('/').pop();
+
+	var subscribersStr = "0";
+	var infoSpans = userInfoNode.querySelectorAll("span");
+	for (var i = 0; i < infoSpans.length; i++) {
+		var spanText = infoSpans[i].textContent.trim();
+		if (spanText.includes("Subscriber")) {
+			subscribersStr = spanText;
+			break;
+		}
+	}
 	var subscribers = parseStringWithKorMSuffixes(subscribersStr);
 	var displayName = userInfoNode.querySelector("a").text;
-	var channelUrl = userInfoNode.querySelector("a").getAttribute("href");
+	var channelUrl = URL_BASE + userInfoNode.querySelector("a").getAttribute("href");
 
 
 	var views = parseInt(ldJson.interactionStatistic[0].userInteractionCount.replace(/,/g, ""))
@@ -310,7 +301,7 @@ source.getContentDetails = function (url) {
 	var videoId = flashvars.playbackTracking.video_id.toString();
 
 	// note: subtitles are in https://www.pornhub.com/video/caption?id={videoId}&language_id=1&caption_type=0 if present
- 
+
 	const details = new PlatformVideoDetails({
 		id: new PlatformID(PLATFORM, videoId, config.id),
 		name: flashvars.video_title,
@@ -319,7 +310,7 @@ source.getContentDetails = function (url) {
 			displayName,
 			channelUrl,
 			userAvatar ?? "",
-			subscribers ?? ""),
+			subscribers ?? 0),
 		datetime: Math.round((new Date(ldJson.uploadDate)).getTime() / 1000),
 		duration: flashvars.video_duration,
 		viewCount: views,
@@ -330,9 +321,9 @@ source.getContentDetails = function (url) {
 		//subtitles: subtitles
 	});
 
-    details.getContentRecommendations = function () {
-        return source.getContentRecommendations(url);
-    };
+	details.getContentRecommendations = function () {
+		return source.getContentRecommendations(url);
+	};
 
 	return details;
 };
@@ -546,11 +537,10 @@ function getShortsPager(from, count) {
 					if (resolution) {
 						sources.push(new HLSSource({
 							name: quality + "p",
-							width: resolution.width,
-							height: resolution.height,
 							url: mediaDefinition.videoUrl,
 							duration: duration,
-							priority: mediaDefinition.defaultQuality === true
+							priority: mediaDefinition.defaultQuality === true,
+							requestModifier: { headers: { "Referer": URL_BASE + "/" } }
 						}));
 					}
 				}
@@ -1069,12 +1059,16 @@ function getPornstarInfo(url) {
 	const nameElement = dom.querySelector("div.name > h1");
 	const channelName = nameElement ? nameElement.textContent.trim() : "";
 
-	var channelDescription;
-	const channelDescriptionElement = dom.querySelector("section.aboutMeSection > div:not([class])")
-	if(!channelDescriptionElement) {
-		channelDescription = "";
-	} else {
-		channelDescription = channelDescriptionElement.textContent;
+	var channelDescription = "";
+	const aboutSection = dom.querySelector("section.aboutMeSection");
+	if (aboutSection) {
+		var divs = aboutSection.querySelectorAll("div");
+		for (var i = 0; i < divs.length; i++) {
+			if (!divs[i].getAttribute("class")) {
+				channelDescription = divs[i].textContent;
+				break;
+			}
+		}
 	}
 
 	const statsNode = dom.querySelector("div.infoBoxes");
@@ -1502,7 +1496,7 @@ function getChannelVideosPager(path, params, page) {
 			const aElement = li.querySelector('a.js-linkVideoThumb');
 			if (aElement) {
 				const videoUrl = aElement.getAttribute('href');
-				const imgElement = aElement.querySelector('img.js-videoThumb');
+				const imgElement = aElement.querySelector('img');
 				if (imgElement && videoUrl) {
 					const thumbnailUrl = imgElement.getAttribute('src');
 					const title = imgElement.getAttribute("alt") || imgElement.getAttribute("data-title") || aElement.getAttribute("data-title");
@@ -1577,7 +1571,7 @@ function getModelVideosPager(path, params, page) {
 				const aElement = li.querySelector('a.js-linkVideoThumb');
 				if (aElement) {
 					const videoUrl = aElement.getAttribute('href');
-					const imgElement = aElement.querySelector('img.js-videoThumb');
+					const imgElement = aElement.querySelector('img');
 					if (imgElement && videoUrl) {
 						const thumbnailUrl = imgElement.getAttribute('src');
 						const title = imgElement.getAttribute("alt") || imgElement.getAttribute("data-title") || aElement.getAttribute("data-title");
@@ -1660,7 +1654,7 @@ function getPornstarVideosPager(path, params, page) {
 				const aElement = li.querySelector('a.js-linkVideoThumb');
 				if (aElement) {
 					const videoUrl = aElement.getAttribute('href');
-					const imgElement = aElement.querySelector('img.js-videoThumb');
+					const imgElement = aElement.querySelector('img');
 					if (imgElement && videoUrl) {
 						const thumbnailUrl = imgElement.getAttribute('src');
 						const title = imgElement.getAttribute("alt") || imgElement.getAttribute("data-title") || aElement.getAttribute("data-title");
@@ -1990,7 +1984,7 @@ function getVideos(html, ulId) {
                     const videoUrl = URL_BASE + aElement.getAttribute('href');
 
                     // Find the <img> tag inside the <a>
-                    const imgElement = aElement.querySelector('img.js-videoThumb');
+                    const imgElement = aElement.querySelector('img');
 
                     if (imgElement) {
                         // Get the "src" attribute as "thumbnailUrl"

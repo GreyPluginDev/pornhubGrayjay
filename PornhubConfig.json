@@ -3,11 +3,12 @@
 	"description": "Basic PornHub plugin for Grayjay",
 	"author": "mr. X",
 	"authorUrl": "",
+	"platformUrl":"https://www.pornhub.com",
 	
 	"sourceUrl": "https://raw.githubusercontent.com/paaspaas00/pornhubGrayjay/main/PornhubConfig.json",
 	"repositoryUrl": "https://github.com/paaspaas00/pornhubGrayjay/",
 	"scriptUrl": "./PornhubScript.js",
-	"version": 10,
+	"version": 11,
 
 	"scriptPublicKey": "",
 	"scriptSignature": "",
@@ -22,6 +23,10 @@
 		".pornhub.com"
 	],
 	"changelog": {
+		"11": [
+			"Fix playing videos, isChannelUrl check;",
+			"Fix some loading some channels;"
+		],
 		"10": [
 			"Remove invalid Signature;",
 			"Added channel statistics to description (total videos, views, subscribers);",
